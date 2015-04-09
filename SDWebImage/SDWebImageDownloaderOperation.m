@@ -20,7 +20,7 @@ NSString *const SDWebImageDownloadFinishNotification = @"SDWebImageDownloadFinis
 @interface SDWebImageDownloaderOperation () <NSURLConnectionDataDelegate>
 
 @property (copy, nonatomic) SDWebImageDownloaderProgressBlock progressBlock;
-@property (copy, nonatomic) SDWebImageDownloaderCompletedBlock completedBlock;
+@property (copy, nonatomic) SDWebImageDownloaderOperationCompletedBlock completedBlock;
 @property (copy, nonatomic) SDWebImageNoParamsBlock cancelBlock;
 
 @property (assign, nonatomic, getter = isExecuting) BOOL executing;
@@ -47,7 +47,7 @@ NSString *const SDWebImageDownloadFinishNotification = @"SDWebImageDownloadFinis
 - (id)initWithRequest:(NSURLRequest *)request
               options:(SDWebImageDownloaderOptions)options
              progress:(SDWebImageDownloaderProgressBlock)progressBlock
-            completed:(SDWebImageDownloaderCompletedBlock)completedBlock
+            completed:(SDWebImageDownloaderOperationCompletedBlock)completedBlock
             cancelled:(SDWebImageNoParamsBlock)cancelBlock {
     if ((self = [super init])) {
         _request = request;
@@ -121,7 +121,7 @@ NSString *const SDWebImageDownloadFinishNotification = @"SDWebImageDownloadFinis
     }
     else {
         if (self.completedBlock) {
-            self.completedBlock(nil, nil, [NSError errorWithDomain:NSURLErrorDomain code:0 userInfo:@{NSLocalizedDescriptionKey : @"Connection can't be initialized"}], YES);
+            self.completedBlock(self, nil, nil, [NSError errorWithDomain:NSURLErrorDomain code:0 userInfo:@{NSLocalizedDescriptionKey : @"Connection can't be initialized"}], YES);
         }
     }
 
@@ -234,7 +234,7 @@ NSString *const SDWebImageDownloadFinishNotification = @"SDWebImageDownloadFinis
         });
 
         if (self.completedBlock) {
-            self.completedBlock(nil, nil, [NSError errorWithDomain:NSURLErrorDomain code:[((NSHTTPURLResponse *)response) statusCode] userInfo:nil], YES);
+            self.completedBlock(self, nil, nil, [NSError errorWithDomain:NSURLErrorDomain code:[((NSHTTPURLResponse *)response) statusCode] userInfo:nil], YES);
         }
         CFRunLoopStop(CFRunLoopGetCurrent());
         [self done];
@@ -312,7 +312,7 @@ NSString *const SDWebImageDownloadFinishNotification = @"SDWebImageDownloadFinis
                 CGImageRelease(partialImageRef);
                 dispatch_main_sync_safe(^{
                     if (self.completedBlock) {
-                        self.completedBlock(image, nil, nil, NO);
+                        self.completedBlock(self, image, nil, nil, NO);
                     }
                 });
             }
@@ -354,7 +354,7 @@ NSString *const SDWebImageDownloadFinishNotification = @"SDWebImageDownloadFinis
 }
 
 - (void)connectionDidFinishLoading:(NSURLConnection *)aConnection {
-    SDWebImageDownloaderCompletedBlock completionBlock = self.completedBlock;
+    SDWebImageDownloaderOperationCompletedBlock completionBlock = self.completedBlock;
     @synchronized(self) {
         CFRunLoopStop(CFRunLoopGetCurrent());
         self.thread = nil;
@@ -371,7 +371,7 @@ NSString *const SDWebImageDownloadFinishNotification = @"SDWebImageDownloadFinis
     
     if (completionBlock) {
         if (self.options & SDWebImageDownloaderIgnoreCachedResponse && responseFromCached) {
-            completionBlock(nil, nil, nil, YES);
+            completionBlock(self, nil, nil, nil, YES);
         } else if (self.imageData) {
             UIImage *image = [UIImage sd_imageWithData:self.imageData];
             NSString *key = [[SDWebImageManager sharedManager] cacheKeyForURL:self.request.URL];
@@ -384,13 +384,13 @@ NSString *const SDWebImageDownloadFinishNotification = @"SDWebImageDownloadFinis
                 }
             }
             if (CGSizeEqualToSize(image.size, CGSizeZero)) {
-                completionBlock(nil, nil, [NSError errorWithDomain:SDWebImageErrorDomain code:0 userInfo:@{NSLocalizedDescriptionKey : @"Downloaded image has 0 pixels"}], YES);
+                completionBlock(self, nil, nil, [NSError errorWithDomain:SDWebImageErrorDomain code:0 userInfo:@{NSLocalizedDescriptionKey : @"Downloaded image has 0 pixels"}], YES);
             }
             else {
-                completionBlock(image, self.imageData, nil, YES);
+                completionBlock(self, image, self.imageData, nil, YES);
             }
         } else {
-            completionBlock(nil, nil, [NSError errorWithDomain:SDWebImageErrorDomain code:0 userInfo:@{NSLocalizedDescriptionKey : @"Image data is nil"}], YES);
+            completionBlock(self, nil, nil, [NSError errorWithDomain:SDWebImageErrorDomain code:0 userInfo:@{NSLocalizedDescriptionKey : @"Image data is nil"}], YES);
         }
     }
     self.completionBlock = nil;
@@ -408,7 +408,7 @@ NSString *const SDWebImageDownloadFinishNotification = @"SDWebImageDownloadFinis
     }
 
     if (self.completedBlock) {
-        self.completedBlock(nil, nil, error, YES);
+        self.completedBlock(self, nil, nil, error, YES);
     }
     self.completionBlock = nil;
     [self done];

@@ -108,7 +108,7 @@ static NSString *const kCompletedCallbackKey = @"completed";
     _operationClass = operationClass ?: [SDWebImageDownloaderOperation class];
 }
 
-- (id <SDWebImageOperation>)downloadImageWithURL:(NSURL *)url options:(SDWebImageDownloaderOptions)options progress:(SDWebImageDownloaderProgressBlock)progressBlock completed:(SDWebImageDownloaderCompletedBlock)completedBlock {
+- (id <SDWebImageOperation>)downloadImageWithURL:(NSURL *)url HTTPHeaders:(NSDictionary *)headers options:(SDWebImageDownloaderOptions)options progress:(SDWebImageDownloaderProgressBlock)progressBlock completed:(SDWebImageDownloaderExtendedCompletedBlock)completedBlock {
     __block SDWebImageDownloaderOperation *operation;
     __weak __typeof(self)wself = self;
 
@@ -122,11 +122,20 @@ static NSString *const kCompletedCallbackKey = @"completed";
         NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:url cachePolicy:(options & SDWebImageDownloaderUseNSURLCache ? NSURLRequestUseProtocolCachePolicy : NSURLRequestReloadIgnoringLocalCacheData) timeoutInterval:timeoutInterval];
         request.HTTPShouldHandleCookies = (options & SDWebImageDownloaderHandleCookies);
         request.HTTPShouldUsePipelining = YES;
+        
+        NSDictionary *requestHeaders = wself.HTTPHeaders;
+        if (headers.count > 0)
+        {
+            NSMutableDictionary *mergedHeaders = [requestHeaders mutableCopy];
+            [mergedHeaders addEntriesFromDictionary:headers];
+            requestHeaders = mergedHeaders;
+        }
+
         if (wself.headersFilter) {
-            request.allHTTPHeaderFields = wself.headersFilter(url, [wself.HTTPHeaders copy]);
+            request.allHTTPHeaderFields = wself.headersFilter(url, requestHeaders);
         }
         else {
-            request.allHTTPHeaderFields = wself.HTTPHeaders;
+            request.allHTTPHeaderFields = requestHeaders;
         }
         operation = [[wself.operationClass alloc] initWithRequest:request
                                                           options:options
@@ -142,7 +151,7 @@ static NSString *const kCompletedCallbackKey = @"completed";
                                                                  if (callback) callback(receivedSize, expectedSize);
                                                              }
                                                          }
-                                                        completed:^(UIImage *image, NSData *data, NSError *error, BOOL finished) {
+                                                        completed:^(SDWebImageDownloaderOperation *op, UIImage *image, NSData *data, NSError *error, BOOL finished) {
                                                             SDWebImageDownloader *sself = wself;
                                                             if (!sself) return;
                                                             __block NSArray *callbacksForURL;
@@ -153,8 +162,8 @@ static NSString *const kCompletedCallbackKey = @"completed";
                                                                 }
                                                             });
                                                             for (NSDictionary *callbacks in callbacksForURL) {
-                                                                SDWebImageDownloaderCompletedBlock callback = callbacks[kCompletedCallbackKey];
-                                                                if (callback) callback(image, data, error, finished);
+                                                                SDWebImageDownloaderExtendedCompletedBlock callback = callbacks[kCompletedCallbackKey];
+                                                                if (callback) callback(op.response, image, data, error, finished);
                                                             }
                                                         }
                                                         cancelled:^{
@@ -187,11 +196,11 @@ static NSString *const kCompletedCallbackKey = @"completed";
     return operation;
 }
 
-- (void)addProgressCallback:(SDWebImageDownloaderProgressBlock)progressBlock andCompletedBlock:(SDWebImageDownloaderCompletedBlock)completedBlock forURL:(NSURL *)url createCallback:(SDWebImageNoParamsBlock)createCallback {
+- (void)addProgressCallback:(SDWebImageDownloaderProgressBlock)progressBlock andCompletedBlock:(SDWebImageDownloaderExtendedCompletedBlock)completedBlock forURL:(NSURL *)url createCallback:(SDWebImageNoParamsBlock)createCallback {
     // The URL will be used as the key to the callbacks dictionary so it cannot be nil. If it is nil immediately call the completed block with no image or data.
     if (url == nil) {
         if (completedBlock != nil) {
-            completedBlock(nil, nil, nil, NO);
+            completedBlock(nil, nil, nil, nil, NO);
         }
         return;
     }

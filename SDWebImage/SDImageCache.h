@@ -7,7 +7,7 @@
  */
 
 #import <Foundation/Foundation.h>
-#import "SDWebImageCompat.h"
+#import "SDImageWithMetadata.h"
 
 typedef NS_ENUM(NSInteger, SDImageCacheType) {
     /**
@@ -24,7 +24,7 @@ typedef NS_ENUM(NSInteger, SDImageCacheType) {
     SDImageCacheTypeMemory
 };
 
-typedef void(^SDWebImageQueryCompletedBlock)(UIImage *image, SDImageCacheType cacheType);
+typedef void(^SDWebImageQueryCompletedBlock)(SDImageWithMetadata *image, SDImageCacheType cacheType);
 
 typedef void(^SDWebImageCheckCacheCompletionBlock)(BOOL isInCache);
 
@@ -87,7 +87,7 @@ typedef void(^SDWebImageCalculateSizeBlock)(NSUInteger fileCount, NSUInteger tot
  * @param image The image to store
  * @param key   The unique image cache key, usually it's image absolute URL
  */
-- (void)storeImage:(UIImage *)image forKey:(NSString *)key;
+- (void)storeImage:(SDImageWithMetadata *)image forKey:(NSString *)key;
 
 /**
  * Store an image into memory and optionally disk cache at the given key.
@@ -96,7 +96,7 @@ typedef void(^SDWebImageCalculateSizeBlock)(NSUInteger fileCount, NSUInteger tot
  * @param key    The unique image cache key, usually it's image absolute URL
  * @param toDisk Store the image to disk cache if YES
  */
-- (void)storeImage:(UIImage *)image forKey:(NSString *)key toDisk:(BOOL)toDisk;
+- (void)storeImage:(SDImageWithMetadata *)image forKey:(NSString *)key toDisk:(BOOL)toDisk;
 
 /**
  * Store an image into memory and optionally disk cache at the given key.
@@ -109,7 +109,7 @@ typedef void(^SDWebImageCalculateSizeBlock)(NSUInteger fileCount, NSUInteger tot
  * @param key         The unique image cache key, usually it's image absolute URL
  * @param toDisk      Store the image to disk cache if YES
  */
-- (void)storeImage:(UIImage *)image recalculateFromImage:(BOOL)recalculate imageData:(NSData *)imageData forKey:(NSString *)key toDisk:(BOOL)toDisk;
+- (void)storeImage:(SDImageWithMetadata *)image recalculateFromImage:(BOOL)recalculate imageData:(NSData *)imageData forKey:(NSString *)key toDisk:(BOOL)toDisk;
 
 /**
  * Query the disk cache asynchronously.
@@ -123,14 +123,14 @@ typedef void(^SDWebImageCalculateSizeBlock)(NSUInteger fileCount, NSUInteger tot
  *
  * @param key The unique key used to store the wanted image
  */
-- (UIImage *)imageFromMemoryCacheForKey:(NSString *)key;
+- (SDImageWithMetadata *)imageFromMemoryCacheForKey:(NSString *)key;
 
 /**
  * Query the disk cache synchronously after checking the memory cache.
  *
  * @param key The unique key used to store the wanted image
  */
-- (UIImage *)imageFromDiskCacheForKey:(NSString *)key;
+- (SDImageWithMetadata *)imageFromDiskCacheForKey:(NSString *)key;
 
 /**
  * Remove the image from memory and disk cache synchronously

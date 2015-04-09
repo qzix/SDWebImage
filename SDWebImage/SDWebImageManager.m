@@ -8,6 +8,7 @@
 
 #import "SDWebImageManager.h"
 #import <objc/message.h>
+#import "SDImageWithMetadata+ETag.h"
 
 @interface SDWebImageCombinedOperation : NSObject <SDWebImageOperation>
 
@@ -146,7 +147,7 @@
     }
     NSString *key = [self cacheKeyForURL:url];
 
-    operation.cacheOperation = [self.imageCache queryDiskCacheForKey:key done:^(UIImage *image, SDImageCacheType cacheType) {
+    operation.cacheOperation = [self.imageCache queryDiskCacheForKey:key done:^(SDImageWithMetadata *image, SDImageCacheType cacheType) {
         if (operation.isCancelled) {
             @synchronized (self.runningOperations) {
                 [self.runningOperations removeObject:operation];
@@ -160,7 +161,7 @@
                 dispatch_main_sync_safe(^{
                     // If image was found in the cache bug SDWebImageRefreshCached is provided, notify about the cached image
                     // AND try to re-download it in order to let a chance to NSURLCache to refresh it from server.
-                    completedBlock(image, nil, cacheType, YES, url);
+                    completedBlock(image.image, nil, cacheType, YES, url);
                 });
             }
 
@@ -173,13 +174,19 @@
             if (options & SDWebImageHandleCookies) downloaderOptions |= SDWebImageDownloaderHandleCookies;
             if (options & SDWebImageAllowInvalidSSLCertificates) downloaderOptions |= SDWebImageDownloaderAllowInvalidSSLCertificates;
             if (options & SDWebImageHighPriority) downloaderOptions |= SDWebImageDownloaderHighPriority;
+            
+            //  headers for download request
+            NSDictionary *HTTPHeaders = nil;
+            
             if (image && options & SDWebImageRefreshCached) {
                 // force progressive off if image already cached but forced refreshing
                 downloaderOptions &= ~SDWebImageDownloaderProgressiveDownload;
                 // ignore image read from NSURLCache if image if cached but force refreshing
                 downloaderOptions |= SDWebImageDownloaderIgnoreCachedResponse;
+                
+                HTTPHeaders = [image ETagData];
             }
-            id <SDWebImageOperation> subOperation = [self.imageDownloader downloadImageWithURL:url options:downloaderOptions progress:progressBlock completed:^(UIImage *downloadedImage, NSData *data, NSError *error, BOOL finished) {
+            id <SDWebImageOperation> subOperation = [self.imageDownloader downloadImageWithURL:url HTTPHeaders:HTTPHeaders options:downloaderOptions progress:progressBlock completed:^(NSURLResponse *resp, UIImage *downloadedImage, NSData *data, NSError *error, BOOL finished) {
                 if (weakOperation.isCancelled) {
                     // Do nothing if the operation was cancelled
                     // See #699 for more details
@@ -210,7 +217,8 @@
 
                             if (transformedImage && finished) {
                                 BOOL imageWasTransformed = ![transformedImage isEqual:downloadedImage];
-                                [self.imageCache storeImage:transformedImage recalculateFromImage:imageWasTransformed imageData:data forKey:key toDisk:cacheOnDisk];
+                                SDImageWithMetadata *imageWithMetadata = [[SDImageWithMetadata alloc] initWithImage:transformedImage metadata:[(NSHTTPURLResponse *)resp allHeaderFields]];
+                                [self.imageCache storeImage:imageWithMetadata recalculateFromImage:imageWasTransformed imageData:data forKey:key toDisk:cacheOnDisk];
                             }
 
                             dispatch_main_sync_safe(^{
@@ -222,7 +230,8 @@
                     }
                     else {
                         if (downloadedImage && finished) {
-                            [self.imageCache storeImage:downloadedImage recalculateFromImage:NO imageData:data forKey:key toDisk:cacheOnDisk];
+                            SDImageWithMetadata *imageWithMetadata = [[SDImageWithMetadata alloc] initWithImage:downloadedImage metadata:[(NSHTTPURLResponse *)resp allHeaderFields]];
+                            [self.imageCache storeImage:imageWithMetadata recalculateFromImage:NO imageData:data forKey:key toDisk:cacheOnDisk];
                         }
 
                         dispatch_main_sync_safe(^{
@@ -250,7 +259,7 @@
         else if (image) {
             dispatch_main_sync_safe(^{
                 if (!weakOperation.isCancelled) {
-                    completedBlock(image, nil, cacheType, YES, url);
+                    completedBlock(image.image, nil, cacheType, YES, url);
                 }
             });
             @synchronized (self.runningOperations) {
@@ -276,7 +285,8 @@
 - (void)saveImageToCache:(UIImage *)image forURL:(NSURL *)url {
     if (image && url) {
         NSString *key = [self cacheKeyForURL:url];
-        [self.imageCache storeImage:image forKey:key toDisk:YES];
+        SDImageWithMetadata *imageWithMetadata = [[SDImageWithMetadata alloc] initWithImage:image metadata:nil];
+        [self.imageCache storeImage:imageWithMetadata forKey:key toDisk:YES];
     }
 }
 

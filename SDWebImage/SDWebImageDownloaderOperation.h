@@ -10,6 +10,9 @@
 #import "SDWebImageDownloader.h"
 #import "SDWebImageOperation.h"
 
+@class SDWebImageDownloaderOperation;
+typedef void(^SDWebImageDownloaderOperationCompletedBlock)(SDWebImageDownloaderOperation *operation, UIImage *image, NSData *data, NSError *error, BOOL finished);
+
 extern NSString *const SDWebImageDownloadStartNotification;
 extern NSString *const SDWebImageDownloadReceiveResponseNotification;
 extern NSString *const SDWebImageDownloadStopNotification;
@@ -72,7 +75,7 @@ extern NSString *const SDWebImageDownloadFinishNotification;
 - (id)initWithRequest:(NSURLRequest *)request
               options:(SDWebImageDownloaderOptions)options
              progress:(SDWebImageDownloaderProgressBlock)progressBlock
-            completed:(SDWebImageDownloaderCompletedBlock)completedBlock
+            completed:(SDWebImageDownloaderOperationCompletedBlock)completedBlock
             cancelled:(SDWebImageNoParamsBlock)cancelBlock;
 
 @end

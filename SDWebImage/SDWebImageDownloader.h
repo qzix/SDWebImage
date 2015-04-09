@@ -68,7 +68,7 @@ extern NSString *const SDWebImageDownloadStopNotification;
 
 typedef void(^SDWebImageDownloaderProgressBlock)(NSInteger receivedSize, NSInteger expectedSize);
 
-typedef void(^SDWebImageDownloaderCompletedBlock)(UIImage *image, NSData *data, NSError *error, BOOL finished);
+typedef void(^SDWebImageDownloaderExtendedCompletedBlock)(NSURLResponse *response, UIImage *image, NSData *data, NSError *error, BOOL finished);
 
 typedef NSDictionary *(^SDWebImageDownloaderHeadersFilterBlock)(NSURL *url, NSDictionary *headers);
 
@@ -160,6 +160,7 @@ typedef NSDictionary *(^SDWebImageDownloaderHeadersFilterBlock)(NSURL *url, NSDi
  * @see SDWebImageDownloaderDelegate
  *
  * @param url            The URL to the image to download
+ * @param HTTPHeaders    Additional HTTP request headers, processed afterwards by headersFilter
  * @param options        The options to be used for this download
  * @param progressBlock  A block called repeatedly while the image is downloading
  * @param completedBlock A block called once the download is completed.
@@ -174,9 +175,10 @@ typedef NSDictionary *(^SDWebImageDownloaderHeadersFilterBlock)(NSURL *url, NSDi
  * @return A cancellable SDWebImageOperation
  */
 - (id <SDWebImageOperation>)downloadImageWithURL:(NSURL *)url
+                                     HTTPHeaders:(NSDictionary *)headers
                                          options:(SDWebImageDownloaderOptions)options
                                         progress:(SDWebImageDownloaderProgressBlock)progressBlock
-                                       completed:(SDWebImageDownloaderCompletedBlock)completedBlock;
+                                       completed:(SDWebImageDownloaderExtendedCompletedBlock)completedBlock;
 
 /**
  * Sets the download queue suspension state

@@ -8,26 +8,10 @@
 
 #import "SDImageCache.h"
 #import "SDWebImageDecoder.h"
-#import "UIImage+MultiFormat.h"
 #import <CommonCrypto/CommonDigest.h>
 
 static const NSInteger kDefaultCacheMaxCacheAge = 60 * 60 * 24 * 7; // 1 week
-// PNG signature bytes and data (below)
-static unsigned char kPNGSignatureBytes[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
-static NSData *kPNGSignatureData = nil;
 
-BOOL ImageDataHasPNGPreffix(NSData *data);
-
-BOOL ImageDataHasPNGPreffix(NSData *data) {
-    NSUInteger pngSignatureLength = [kPNGSignatureData length];
-    if ([data length] >= pngSignatureLength) {
-        if ([[data subdataWithRange:NSMakeRange(0, pngSignatureLength)] isEqualToData:kPNGSignatureData]) {
-            return YES;
-        }
-    }
-
-    return NO;
-}
 
 FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
     return image.size.height * image.size.width * image.scale * image.scale;
@@ -63,9 +47,6 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
 - (id)initWithNamespace:(NSString *)ns {
     if ((self = [super init])) {
         NSString *fullNamespace = [@"com.hackemist.SDWebImageCache." stringByAppendingString:ns];
-
-        // initialise PNG signature data
-        kPNGSignatureData = [NSData dataWithBytes:kPNGSignatureBytes length:8];
 
         // Create IO serial queue
         _ioQueue = dispatch_queue_create("com.hackemist.SDWebImageCache", DISPATCH_QUEUE_SERIAL);
@@ -156,45 +137,18 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
     return [paths[0] stringByAppendingPathComponent:fullNamespace];
 }
 
-- (void)storeImage:(UIImage *)image recalculateFromImage:(BOOL)recalculate imageData:(NSData *)imageData forKey:(NSString *)key toDisk:(BOOL)toDisk {
+- (void)storeImage:(SDImageWithMetadata *)image recalculateFromImage:(BOOL)recalculate imageData:(NSData *)imageData forKey:(NSString *)key toDisk:(BOOL)toDisk {
     if (!image || !key) {
         return;
     }
 
-    NSUInteger cost = SDCacheCostForImage(image);
+    NSUInteger cost = SDCacheCostForImage(image.image);
+    
     [self.memCache setObject:image forKey:key cost:cost];
 
     if (toDisk) {
         dispatch_async(self.ioQueue, ^{
-            NSData *data = imageData;
-
-            if (image && (recalculate || !data)) {
-#if TARGET_OS_IPHONE
-                // We need to determine if the image is a PNG or a JPEG
-                // PNGs are easier to detect because they have a unique signature (http://www.w3.org/TR/PNG-Structure.html)
-                // The first eight bytes of a PNG file always contain the following (decimal) values:
-                // 137 80 78 71 13 10 26 10
-
-                // We assume the image is PNG, in case the imageData is nil (i.e. if trying to save a UIImage directly),
-                // we will consider it PNG to avoid loosing the transparency
-                BOOL imageIsPng = YES;
-
-                // But if we have an image data, we will look at the preffix
-                if ([imageData length] >= [kPNGSignatureData length]) {
-                    imageIsPng = ImageDataHasPNGPreffix(imageData);
-                }
-
-                if (imageIsPng) {
-                    data = UIImagePNGRepresentation(image);
-                }
-                else {
-                    data = UIImageJPEGRepresentation(image, (CGFloat)1.0);
-                }
-#else
-                data = [NSBitmapImageRep representationOfImageRepsInArray:image.representations usingType: NSJPEGFileType properties:nil];
-#endif
-            }
-
+            NSData *data = [image serializeWithImageData:imageData shouldRecalculate:recalculate];
             if (data) {
                 if (![_fileManager fileExistsAtPath:_diskCachePath]) {
                     [_fileManager createDirectoryAtPath:_diskCachePath withIntermediateDirectories:YES attributes:nil error:NULL];
@@ -206,11 +160,11 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
     }
 }
 
-- (void)storeImage:(UIImage *)image forKey:(NSString *)key {
+- (void)storeImage:(SDImageWithMetadata *)image forKey:(NSString *)key {
     [self storeImage:image recalculateFromImage:YES imageData:nil forKey:key toDisk:YES];
 }
 
-- (void)storeImage:(UIImage *)image forKey:(NSString *)key toDisk:(BOOL)toDisk {
+- (void)storeImage:(SDImageWithMetadata *)image forKey:(NSString *)key toDisk:(BOOL)toDisk {
     [self storeImage:image recalculateFromImage:YES imageData:nil forKey:key toDisk:toDisk];
 }
 
@@ -235,21 +189,21 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
     });
 }
 
-- (UIImage *)imageFromMemoryCacheForKey:(NSString *)key {
+- (SDImageWithMetadata *)imageFromMemoryCacheForKey:(NSString *)key {
     return [self.memCache objectForKey:key];
 }
 
-- (UIImage *)imageFromDiskCacheForKey:(NSString *)key {
+- (SDImageWithMetadata *)imageFromDiskCacheForKey:(NSString *)key {
     // First check the in-memory cache...
-    UIImage *image = [self imageFromMemoryCacheForKey:key];
+    SDImageWithMetadata *image = [self imageFromMemoryCacheForKey:key];
     if (image) {
         return image;
     }
 
     // Second check the disk cache...
-    UIImage *diskImage = [self diskImageForKey:key];
+    SDImageWithMetadata *diskImage = [self diskImageForKey:key];
     if (diskImage) {
-        NSUInteger cost = SDCacheCostForImage(diskImage);
+        NSUInteger cost = SDCacheCostForImage(diskImage.image);
         [self.memCache setObject:diskImage forKey:key cost:cost];
     }
 
@@ -275,23 +229,14 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
     return nil;
 }
 
-- (UIImage *)diskImageForKey:(NSString *)key {
+- (SDImageWithMetadata *)diskImageForKey:(NSString *)key {
     NSData *data = [self diskImageDataBySearchingAllPathsForKey:key];
     if (data) {
-        UIImage *image = [UIImage sd_imageWithData:data];
-        image = [self scaledImageForKey:key image:image];
-        if (self.shouldDecompressImages) {
-            image = [UIImage decodedImageWithImage:image];
-        }
-        return image;
+        return [SDImageWithMetadata deserializeFromData:data shouldDecompress:self.shouldDecompressImages key:key];
     }
     else {
         return nil;
     }
-}
-
-- (UIImage *)scaledImageForKey:(NSString *)key image:(UIImage *)image {
-    return SDScaledImageForKey(key, image);
 }
 
 - (NSOperation *)queryDiskCacheForKey:(NSString *)key done:(SDWebImageQueryCompletedBlock)doneBlock {
@@ -305,7 +250,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
     }
 
     // First check the in-memory cache...
-    UIImage *image = [self imageFromMemoryCacheForKey:key];
+    SDImageWithMetadata *image = [self imageFromMemoryCacheForKey:key];
     if (image) {
         doneBlock(image, SDImageCacheTypeMemory);
         return nil;
@@ -318,9 +263,9 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
         }
 
         @autoreleasepool {
-            UIImage *diskImage = [self diskImageForKey:key];
+            SDImageWithMetadata *diskImage = [self diskImageForKey:key];
             if (diskImage) {
-                NSUInteger cost = SDCacheCostForImage(diskImage);
+                NSUInteger cost = SDCacheCostForImage(diskImage.image);
                 [self.memCache setObject:diskImage forKey:key cost:cost];
             }
 
