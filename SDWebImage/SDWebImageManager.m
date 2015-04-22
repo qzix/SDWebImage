@@ -161,7 +161,7 @@
                 dispatch_main_sync_safe(^{
                     // If image was found in the cache bug SDWebImageRefreshCached is provided, notify about the cached image
                     // AND try to re-download it in order to let a chance to NSURLCache to refresh it from server.
-                    completedBlock(image.image, nil, cacheType, YES, url);
+                    completedBlock(image.image, nil, cacheType, NO, url);
                 });
             }
 
@@ -184,7 +184,12 @@
                 // ignore image read from NSURLCache if image if cached but force refreshing
                 downloaderOptions |= SDWebImageDownloaderIgnoreCachedResponse;
                 
-                HTTPHeaders = [image ETagData];
+                NSDictionary *etag = [image ETagData];
+                if (etag) {
+                    HTTPHeaders = etag;
+                    //  if ETag is sepcified, NSURLCache should be ignored
+                    downloaderOptions &= ~SDWebImageDownloaderUseNSURLCache;
+                }
             }
             id <SDWebImageOperation> subOperation = [self.imageDownloader downloadImageWithURL:url HTTPHeaders:HTTPHeaders options:downloaderOptions progress:progressBlock completed:^(NSURLResponse *resp, UIImage *downloadedImage, NSData *data, NSError *error, BOOL finished) {
                 if (weakOperation.isCancelled) {

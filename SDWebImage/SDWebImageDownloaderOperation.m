@@ -60,7 +60,8 @@ NSString *const SDWebImageDownloadFinishNotification = @"SDWebImageDownloadFinis
         _executing = NO;
         _finished = NO;
         _expectedSize = 0;
-        responseFromCached = YES; // Initially wrong until `connection:willCacheResponse:` is called or not called
+        // Initially wrong until `connection:willCacheResponse:` is called or not called, if NSURLCache is used
+        responseFromCached = options & SDWebImageDownloaderUseNSURLCache;
     }
     return self;
 }
